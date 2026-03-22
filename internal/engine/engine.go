@@ -34,6 +34,7 @@ var staticRules = []struct {
 	{rules.RuleHardcodedTraceID, rules.RuleHardcodedTraceIDFn},
 	{rules.RuleHardcodedIdentityToken, rules.RuleHardcodedIdentityTokenFn},
 	{rules.RuleLocalEventType, rules.RuleLocalEventTypeFn},
+	{rules.RuleCanonVersionFloor, rules.RuleCanonVersionFloorFn},
 }
 
 // dynamicRules is the ordered list of rules evaluated in Phase 2 (execution gate).

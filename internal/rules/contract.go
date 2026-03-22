@@ -8,6 +8,7 @@ package rules
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -142,4 +143,70 @@ func RuleDependsOnResolvableFn(ctx *ProjectContext) []*Violation {
 
 func isGoFile(path string) bool {
 	return strings.HasSuffix(path, ".go")
+}
+
+// ── A-C-006: go.mod Canon dependency >= v1.0.0 ───────────────────────────────
+
+// RuleCanonVersionFloorFn checks that go.mod requires Canon >= v1.0.0.
+// A service using Canon v0.x is missing RelayTokenHeader, SubdomainHeader,
+// OwnerHeader, and workspace payload types — all added in v1.0.0 (ADR-045).
+func RuleCanonVersionFloorFn(ctx *ProjectContext) []*Violation {
+	if ctx.GoMod == "" {
+		return nil // non-Go project — skip
+	}
+	// GoMod holds the module name. We need the full go.mod content.
+	// Load it from Dir + "/go.mod".
+	gomodPath := ctx.Dir + "/go.mod"
+	data, err := os.ReadFile(gomodPath)
+	if err != nil {
+		return nil // file unreadable — skip silently
+	}
+	src := string(data)
+
+	// Find: github.com/Harshmaury/Canon v<version>
+	for _, line := range strings.Split(src, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "Harshmaury/Canon") {
+			continue
+		}
+		// Extract version token — last field on the line
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		version := fields[len(fields)-1]
+		if isPreV1Canon(version) {
+			return []*Violation{{
+				RuleID:   RuleCanonVersionFloor,
+				Severity: SeverityError,
+				Location: "go.mod",
+				Message:  fmt.Sprintf("Canon %s is below v1.0.0 — missing RelayTokenHeader, workspace payload types", version),
+				Hint:     "run: go get github.com/Harshmaury/Canon@v1.0.0 && go mod tidy",
+			}}
+		}
+		return nil // Canon >= v1.0.0
+	}
+	// Canon not found in go.mod at all — services using the config/canon.go shim
+	// are not yet on the real module. Warn, not error (migration in progress).
+	return []*Violation{{
+		RuleID:   RuleCanonVersionFloor,
+		Severity: SeverityWarning,
+		Location: "go.mod",
+		Message:  "Canon not found in go.mod — using local shim or not imported",
+		Hint:     "run: go get github.com/Harshmaury/Canon@v1.0.0 && go mod tidy",
+	}}
+}
+
+// isPreV1Canon returns true when the version string indicates Canon < v1.0.0.
+func isPreV1Canon(version string) bool {
+	// Versions like v0.1.0, v0.3.0, v0.4.1 are all < v1.0.0
+	// Versions like v1.0.0, v1.1.0 are fine
+	// Pseudo-versions like v0.0.0-20260101-abc123 are also < v1.0.0
+	if strings.HasPrefix(version, "v0.") {
+		return true
+	}
+	if strings.HasPrefix(version, "v0.0.0-") {
+		return true
+	}
+	return false
 }

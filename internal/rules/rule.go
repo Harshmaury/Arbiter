@@ -37,6 +37,7 @@ const (
 	RuleHardcodedIdentityToken = "A-C-003" // no literal "X-Identity-Token" outside Canon
 	RuleLocalEventType         = "A-C-004" // no local EventType const definitions
 	RuleDependsOnResolvable    = "A-C-005" // depends_on entries resolve to known IDs
+	RuleCanonVersionFloor      = "A-C-006" // go.mod Canon dependency must be >= v1.0.0
 )
 
 // ── Severity ──────────────────────────────────────────────────────────────────
