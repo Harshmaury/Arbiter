@@ -1,0 +1,8 @@
+id: arbiter
+name: Arbiter
+role: tool
+version: v0.1.0
+description: Centralized architectural enforcement engine — evaluates ADR-047 invariants before packaging and execution
+runtime:
+  binary: arbiter
+  port: 0
