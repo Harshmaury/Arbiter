@@ -3,14 +3,19 @@
 // Package probe contains the live Nexus query used by dynamic rules.
 // ADR-047 §5.2 — Phase 2 (execution gate).
 // Uses stdlib net/http — acceptable in tool packages (Arbiter is not an observer).
+//
+// CW-4-fix: EmitSkipEnforceAlert now marshals canonevents.SystemAlertPayload
+// instead of constructing a raw JSON string. Schema is enforced at compile time.
 package probe
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
+
+	canonevents "github.com/Harshmaury/Canon/events"
 )
 
 // FetchServiceIDs queries GET /services on Nexus and returns the set of
@@ -79,15 +84,42 @@ func FetchADRFiles(nexusAddr, serviceToken string) []string {
 
 // EmitSkipEnforceAlert fires a SYSTEM_ALERT event to Nexus when --skip-enforce
 // is used (ADR-047 §3.2 — audited use). Fires in background; never blocks.
+//
+// CW-4-fix: payload is marshalled from canonevents.SystemAlertPayload —
+// no more raw JSON string construction. Schema is enforced at compile time.
 func EmitSkipEnforceAlert(nexusAddr, serviceToken, projectID string) {
 	go func() {
+		payload := canonevents.SystemAlertPayload{
+			Rule:      canonevents.AlertRuleSkipEnforce,
+			ProjectID: projectID,
+			Message:   "--skip-enforce used: Arbiter execution gate bypassed",
+		}
+		payloadJSON, err := json.Marshal(payload)
+		if err != nil {
+			return // marshal failure is not recoverable — skip silently
+		}
+
+		event := struct {
+			Type      string `json:"type"`
+			Source    string `json:"source"`
+			Component string `json:"component"`
+			Outcome   string `json:"outcome"`
+			Payload   string `json:"payload"`
+		}{
+			Type:      "SYSTEM_ALERT",
+			Source:    "engx",
+			Component: "arbiter",
+			Outcome:   "",
+			Payload:   string(payloadJSON),
+		}
+		body, err := json.Marshal(event)
+		if err != nil {
+			return
+		}
+
 		client := &http.Client{Timeout: 2 * time.Second}
-		body := fmt.Sprintf(
-			`{"type":"SYSTEM_ALERT","source":"engx","component":"arbiter","outcome":"","payload":{"rule":"skip-enforce","project":%q,"message":"--skip-enforce used: Arbiter execution gate bypassed"}}`,
-			projectID,
-		)
 		req, err := http.NewRequest(http.MethodPost, nexusAddr+"/events",
-			strings.NewReader(body))
+			bytes.NewReader(body))
 		if err != nil {
 			return
 		}
@@ -101,4 +133,15 @@ func EmitSkipEnforceAlert(nexusAddr, serviceToken, projectID string) {
 		}
 		resp.Body.Close()
 	}()
+}
+
+// buildPayloadJSON is the canonical helper for serialising a typed payload
+// to the JSON string stored in EventDTO.Payload.
+// Exported for use by other Arbiter probes if needed in future.
+func buildPayloadJSON(v any) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", fmt.Errorf("marshal payload: %w", err)
+	}
+	return string(b), nil
 }
