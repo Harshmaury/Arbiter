@@ -1,72 +1,68 @@
+// @arbiter-project: arbiter
+// @arbiter-path: SERVICE-CONTRACT.md
 # SERVICE-CONTRACT.md — Arbiter
+# @version: 0.1.0
+# @updated: 2026-03-25
 
-**Role:** tool  
-**Version:** v0.1.0  
-**ADR:** ADR-047  
-**Port:** none (library + CLI; no HTTP server in v0.1.0)  
-**Module:** `github.com/Harshmaury/Arbiter`
+**Type:** Library + CLI · **Module:** `github.com/Harshmaury/Arbiter` · **Domain:** Tool
 
 ---
 
-## Public API surface
+## Code
 
+```
+api/arbiter.go              VerifyPackaging / VerifyExecution / VerifyAll / FormatReport
+internal/engine/engine.go   rule evaluation loop
+internal/rules/temporal.go  A-T-* -- ADR coverage, version field present
+internal/rules/spatial.go   A-S-* -- import boundaries, Herald usage in collectors
+internal/rules/authority.go A-A-* -- observer write prohibition, role validity
+internal/rules/contract.go  A-C-* -- Canon usage, no local EventType definitions
+internal/loader/loader.go   loads project context from nexus.yaml + go files
+internal/probe/nexus.go     EmitSkipEnforceAlert -- typed SystemAlertPayload
+cmd/arbiter/main.go         CLI: verify / rules / help
+```
+
+---
+
+## Contract
+
+**Go API:**
 ```go
-import arbiter "github.com/Harshmaury/Arbiter/api"
-
-// Packaging gate — called by zp before writing any ZIP.
-report, err := arbiter.VerifyPackaging(dir string) (*rules.Report, error)
-
-// Execution gate — called by engx run Enforcing step (Phase 2).
-report, err := arbiter.VerifyExecution(nexusAddr, serviceToken, projectDir string) (*rules.Report, error)
-
-// CI gate — runs all static + dynamic rules.
-report, err := arbiter.VerifyAll(dir, nexusAddr, serviceToken string) (*rules.Report, error)
-
-// Report rendering — mirrors engx doctor output format.
-output := arbiter.FormatReport(report *rules.Report) string
+report, err := arbiter.VerifyPackaging(dir)
+report, err := arbiter.VerifyExecution(addr, token, dir)
+report, err := arbiter.VerifyAll(dir, addr, token)
+output   := arbiter.FormatReport(report)
 ```
 
-## Report type
-
+**Report types:**
 ```go
-type Report struct {
-    Violations  []*Violation
-    Passed      []string      // rule IDs that passed
-    EvaluatedAt time.Time
-}
-
-func (r *Report) OK() bool        // true when zero violations
-func (r *Report) HasErrors() bool // true when any severity="error"
-
-type Violation struct {
-    RuleID   string // e.g. "A-C-001"
-    Severity string // "error" | "warning"
-    Location string // "file.go:line" or "nexus.yaml"
-    Message  string
-    Hint     string // always non-empty — actionable fix
-}
+Report{Violations []*Violation, Passed []string, EvaluatedAt time.Time}
+Violation{RuleID, Severity, Location, Message, Hint string}  // Hint always non-empty
 ```
 
-## Invariants
-
-- Arbiter is **read-only** — it never modifies any project file
-- Arbiter has **no persistent state** — every call is a fresh evaluation
-- Arbiter has **no HTTP server** in v0.1.0 — it is a library with a CLI face
-- All violations include a non-empty `Hint` field
-- Canon is explicitly exempt from A-C-* rules (it is the definition, not a consumer)
-- `VerifyExecution` dynamic rules skip gracefully when KnownServiceIDs is empty
-
-## CLI contract
-
+**CLI:**
 ```
-arbiter verify [path|./...]   exit 0 (clean) or 1 (violations) or 2 (error)
-arbiter rules                 stdout: rule table, exit 0
-arbiter help                  stdout: usage, exit 0
+arbiter verify [path|./...]   exit 0 clean / 1 violations / 2 error
+arbiter rules                 stdout: rule table
 ```
 
-## Does NOT
+Canon is exempt from A-C-* rules.
 
-- Introduce new architectural rules (rules reflect existing ADRs only)
-- Change runtime behavior of any service
-- Replace Guardian observation (Arbiter blocks before; Guardian observes after)
-- Enforce business logic
+---
+
+## Control
+
+| Gate | Trigger | Runs |
+|------|---------|------|
+| Packaging | `zp` pre-ZIP | `VerifyPackaging` -- static only |
+| Execution | `engx run` Enforce step | `VerifyExecution` -- static + dynamic |
+
+No persistent state. Every call is a fresh evaluation. Read-only.
+
+`VerifyExecution` dynamic rules skip gracefully when `KnownServiceIDs` is empty.
+
+---
+
+## Context
+
+Enforcement layer -- blocks before. Guardian observes after. Does not replace Guardian. All rules reflect existing ADRs only.
