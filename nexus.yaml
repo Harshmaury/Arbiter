@@ -1,11 +1,18 @@
+name: arbiter
 id: arbiter
-name: Arbiter
-role: tool
-version: v0.1.0
-description: Centralized architectural enforcement engine — evaluates ADR-047 invariants before packaging and execution
+type: tool
+language: go
+version: 0.1.0
+keywords:
+  - arbiter
+  - enforcement
+  - adr-compliance
+capabilities:
+  - packaging-verification
+  - execution-verification
+  - adr-rule-evaluation
+depends_on: []
 runtime:
-  binary: arbiter
-  port: 9094
-  env:
-    ARBITER_HTTP_ADDR: "127.0.0.1:9094"
-    ARBITER_SERVICE_TOKEN: ""  # set to platform service token in production
+  provider: process
+  command: /home/harsh/bin/arbiter
+  dir: /home/harsh/workspace/projects/engx/services/arbiter
